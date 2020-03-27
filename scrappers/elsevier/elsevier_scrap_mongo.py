@@ -32,25 +32,31 @@ def process_entry(text, sections):
             sections = process_entry(elem, sections)
     return(sections)
 
+def process_outline(json_outline):
+    sections = []
+    for elem in json_outline:
+        if elem['$']['type'] == 'sections':
+            for sec in elem['$$']:
+                if sec['#name'] == 'title':
+                    sections.append(get_title(sec))
+                elif sec['#name'] == 'entry':
+                    for entry in sec['$$']:
+                        sections = process_entry(entry, sections)
+    return sections
+
 def get_info(bar, sem, db_client, col, sha, link):
     with sem:
         bar.next()
         db_papers = db_client[config.db_name]
         col_to_work = db_papers[col]
         try:
-            sections = []
             r1 = requests.get(link, headers = headers)
             id_paper = r1.url.split('/')[-1]
             res = requests.get(base_url.format(id_paper), headers = headers)
-            for elem in res.json()['outline']:
-                if elem['$']['type'] == 'sections':
-                    for sec in elem['$$']:
-                        if sec['#name'] == 'title':
-                            sections.append(get_title(sec))
-                        elif sec['#name'] == 'entry':
-                            for entry in sec['$$']:
-                                sections = process_entry(entry, sections)
-            col_to_work.update_one({'sha':sha}, {'$set': {'checked':True, 'toc': sections}})
+            res_json = res.json()
+            json_outline = res_json['outline']
+            sections = process_outline(json_outline)
+            col_to_work.update_one({'sha':sha}, {'$set': {'checked':True, 'toc': sections, 'raw': json.dumps(obj=res_json)}})
         except Exception as e:
             col_to_work.update_one({'sha':sha}, {'$set': {'checked':True}})
             # raise(e) 

@@ -4,6 +4,7 @@ import signal
 import threading
 from pymongo import errors, MongoClient
 import config
+import json
 from progress.bar import Bar
 
 base_url = 'https://www.sciencedirect.com/sdfe/arp/pii/{}/toc'
@@ -44,36 +45,41 @@ def process_outline(json_outline):
                         sections = process_entry(entry, sections)
     return sections
 
-def get_info(bar, sem, db_client, col, sha, link):
+def get_outlines(bar, sem, db_client, col, sha, link):
     with sem:
         bar.next()
         db_papers = db_client[config.db_name]
         col_to_work = db_papers[col]
+        res_json = None
         try:
             r1 = requests.get(link, headers = headers)
             id_paper = r1.url.split('/')[-1]
             res = requests.get(base_url.format(id_paper), headers = headers)
             res_json = res.json()
-            json_outline = res_json['outline']
-            sections = process_outline(json_outline)
-            col_to_work.update_one({'sha':sha}, {'$set': {'checked':True, 'toc': sections, 'raw': json.dumps(obj=res_json)}})
+            # json_outline = res_json['outline']
+            # sections = process_outline(json_outline)
+            # col_to_work.update_one({'sha':sha}, {'$set': {'checked':True, 'toc': sections, 'raw': json.dumps(obj=res_json)}})
+            col_to_work.update_one({'sha':sha}, {'$set': {'checked':True, 'raw': json.dumps(obj=res_json)}})
         except Exception as e:
-            col_to_work.update_one({'sha':sha}, {'$set': {'checked':True}})
+            col_to_work.update_one({'sha':sha}, {'$set': {'checked':True, 'raw': json.dumps(obj=res_json)}})
+            # col_to_work.update_one({'sha':sha}, {'$set': {'checked':True}})
             # raise(e) 
         
 def thread_caller(sem, db_client, col):
     db_papers = db_client[config.db_name]
     col_to_work = db_papers[col]
-    documents = col_to_work.find({'checked': False})
-    bar = Bar('Processing', max=col_to_work.count_documents({'checked': False}))
+    filter_checked = {'checked': False}
+    documents = col_to_work.find(filter_checked)
+    bar = Bar('Processing', max=col_to_work.count_documents(filter_checked))
     for document in documents:
         try:
-            t = threading.Thread(target=get_info, args=(bar, sem, db_client, col, document['sha'], document['link']))
+            t = threading.Thread(target=get_outlines, args=(bar, sem, db_client, col, document['sha'], document['link']))
             threads.append(t)
             t.start()
-        except Exception as e:
+        except RuntimeError:
             pass
-            # raise(e)
+        except Exception as e:
+            raise(e)
             # print('[0] error obtaining info from "{}"'.format(document['sha']))
     for t in threads:
         t.join()
@@ -101,11 +107,13 @@ if __name__ == "__main__":
     db_client = MongoClient(config.mongoURL)
     db_papers = db_client[config.db_name]
     col_to_work = db_papers[col_elsevier]
-        
-    with open(file_, 'r') as file_in:
-        n_lines = len(file_in.readlines())
-    if n_lines != col_to_work.count_documents({}):
-        insert_elems_db_elsevier(db_client, file_)
+    try:
+        with open(file_, 'r') as file_in:
+            n_lines = len(file_in.readlines())
+        if n_lines != col_to_work.count_documents({}):
+            insert_elems_db_elsevier(db_client, file_)
+    except:
+        print('File {} not found. Continuing with the process'.format(file_))
     sem = threading.Semaphore(threads_amount)
     thread_caller(sem, db_client, col_elsevier)
     db_client.close()

@@ -13,4 +13,10 @@ In a first phase it populates the database with the DOIs and the sha values of t
 - the number of lines of the input file are different than the number of documents in the database
 - it only inserts if the document it hasn't been registered in the database already (this can be improved to make it faster)
 
-It uses a config file located in the root of the folder "scrapers".
+It uses a config file located in the same folder.
+
+# Misc
+## Command start mongodb container with persistance
+`docker run -d -v \`pwd\`/database:/data/db -p 127.0.0.1:27017-27019:27017-27019 mongo`
+
+Due to the value of the param `-p` the container is only accesible from the local machine.

@@ -20,3 +20,11 @@ It uses a config file located in the same folder.
 `docker run -d -v \`pwd\`/database:/data/db -p 127.0.0.1:27017-27019:27017-27019 mongo`
 
 Due to the value of the param `-p` the container is only accesible from the local machine.
+
+## Export and export content mongo
+
+`mongoexport --db papers --collection papers_elsevier -o export_elsevier.json --jsonArray`
+
+`mongoimport --db papers --collection papers_elsevier --/drop --file export_elsevier.json`
+
+

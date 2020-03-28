@@ -23,8 +23,6 @@ Due to the value of the param `-p` the container is only accesible from the loca
 
 ## Export and export content mongo
 
-`mongoexport --db papers --collection papers_elsevier -o export_elsevier.json --jsonArray`
+`mongoexport --db papers --collection papers_elsevier -o /data/db/export_elsevier.json --jsonArray`
 
-`mongoimport --db papers --collection papers_elsevier --/drop --file export_elsevier.json`
-
-
+`mongoimport --db papers --collection papers_elsevier --/drop --file /data/db/export_elsevier.json --jsonArray`

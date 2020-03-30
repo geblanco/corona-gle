@@ -1,0 +1,14 @@
+flair
+glob2
+kaggle
+nltk
+numpy
+pandas
+pickle
+requests
+requests_random_user_agent
+scispacy
+spacy
+torch
+tqdm
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_core_sci_lg-0.2.4.tar.gz#egg=en_core_sci_lg

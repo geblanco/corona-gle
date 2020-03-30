@@ -59,6 +59,7 @@ class Database:
             name = getattr(class_method, 'NAME')
         else:
             name = class_method.__class__.__name__
+        assert('.' not in name and '$' not in name)
         Database.METHODS[name] = {
             'class': class_method,
             'init': False
@@ -66,6 +67,7 @@ class Database:
 
     @staticmethod
     def get_method(name):
+        assert('.' not in name and '$' not in name)
         class_dict = Database.METHODS[name]
         method_obj = class_dict['class']
         if not class_dict['init']:
@@ -181,28 +183,70 @@ class Database:
 
     @staticmethod
     def update_mean_vectors(method, use='raw', force=False):
+        assert('.' not in method and '$' not in method)
         method_obj = Database.get_method(method)
 
-        documents = Database.list_documents(projection={use: 1, 'hash_id': 1, '_id': 0})
+        if not force:
+            query_dict = {f'sections_embeddings.{method}': {'$exists': True}}
+        else:
+            query_dict = {}
+        documents = Database.list_documents(query=query_dict, projection={use: 1, 'hash_id': 1, '_id': 0, f'sections_embeddings.{method}': 1})
 
-        with cf.ThreadPoolExecutor(max_workers=Params.COMPUTE_VECTORS_WORKERS) as executor:
-            for doc, sections_vector in zip(documents, tqdm(executor.map(partial(Database.fix_compute_mean_vector, use, method_obj.compute_mean_vector), documents), total=len(documents))):
+        num_workers = Params.COMPUTE_VECTORS_WORKERS if not hasattr(method_obj, 'NUM_WORKERS') else method_obj.NUM_WORKERS
+        use_loop = False
+        if hasattr(method_obj, 'TYPE_THREADING'):
+            if method_obj.TYPE_THREADING == 'pytorch':
+                import torch.multiprocessing as mp
+                try:
+                    mp.set_start_method('spawn', True)
+                except:
+                    pass
+                create_exec = lambda: mp.Pool(num_workers)
+            
+            elif method_obj.TYPE_THREADING == 'python':
+                from multiprocessing import Pool
+                create_exec = lambda: Pool(num_workers)
+
+            elif method_obj.TYPE_THREADING == None:
+                use_loop = True
+
+            else:
+                create_exec = lambda: cf.ThreadPoolExecutor(max_workers=num_workers)
+        
+        else:
+            create_exec = lambda: cf.ThreadPoolExecutor(max_workers=num_workers)
+
+        if use_loop:
+            for doc in tqdm(documents):
+                sections_vector = method_obj.compute_mean_vector(doc[use])
                 with Connection.CLIENT.start_session() as session:
                     with session.start_transaction():
-                        if force or Connection.DB.documents.find_one({'hash_id': doc['hash_id'], f'sections_embeddings.{method}': {'$exists': True}}) is None:
+                        if force or method not in doc['sections_embeddings'].keys():
                             for k in sections_vector.keys():
                                 if sections_vector[k] is not None:
                                     sections_vector[k]['vector'] = Binary(pickle.dumps(sections_vector[k]['vector'], protocol=2))
                             Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {f'sections_embeddings.{method}': sections_vector}}, upsert=True)
+                
+        else: 
+            with create_exec() as executor:
+                for doc, sections_vector in zip(documents, tqdm(executor.map(partial(Database.fix_compute_mean_vector, use, method_obj.compute_mean_vector), documents), total=len(documents))):
+                    with Connection.CLIENT.start_session() as session:
+                        with session.start_transaction():
+                            if force or method not in doc['sections_embeddings'].keys():
+                                for k in sections_vector.keys():
+                                    if sections_vector[k] is not None:
+                                        sections_vector[k]['vector'] = Binary(pickle.dumps(sections_vector[k]['vector'], protocol=2))
+                                Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {f'sections_embeddings.{method}': sections_vector}}, upsert=True)
     """
     ==============================================================================
         GET
     ==============================================================================
     """
-    def list_documents(hash_ids=None, projection={}, use_translation=False):
+    def list_documents(query={}, hash_ids=None, projection={}, use_translation=False):
         query_dict = {}
         if hash_ids is not None:
             query_dict['hash_id'] = {'$in': hash_ids}
+        query_dict.update(query)
 
         if use_translation:
             projection.update({'sections_translation': 1})
@@ -246,6 +290,7 @@ class Database:
         }
 
     def list_doc_embeddings(method, hash_ids=None, cache=True):
+        assert('.' not in method and '$' not in method)
         method_obj = Database.get_method(method)
         query_dict = {}
         if hash_ids is not None:
@@ -281,8 +326,8 @@ class Database:
             'hash_id': doc['hash_id']
         })
 
-
     def list_doc_embeddings_from_section(method, section, hash_ids=None, use_translation=False):
+        assert('.' not in method and '$' not in method)
         method_obj = Database.get_method(method)
         query_dict = {}
         if hash_ids is not None:

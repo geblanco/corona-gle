@@ -1,7 +1,16 @@
+from urllib.parse import quote
+
 import os
 
+mongo_data = dict(
+  user = quote(os.environ.get('MONGO_USER', 'root')),
+  passwd = quote(os.environ.get('MONGO_PASS', 'claveRoot')),
+  ip = os.environ.get('MONGO_IP', '127.0.0.1'),
+  port = os.environ.get('MONGO_PORT', '3310'),
+)
+
 class Params:
-	DB_URL = 'mongodb://root:claveRoot@127.0.0.1:3310'
+	DB_URL = 'mongodb://{user}:{pass}@{ip}:{port}'.format(**mongo_data)
 	DB_NAME = "coronagle_db"
 
 	DATASET_KAGGLE_NAME = 'allen-institute-for-ai/CORD-19-research-challenge'

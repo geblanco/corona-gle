@@ -62,9 +62,9 @@ for i, doc in enumerate(documents):
         if max_section is not None: # Hay seccion seleccionada
             dataset.append({
                 'hash_id': doc['hash_id'],
-                'section_title': section_title,
-                'section_text': section_text,
-                'section_match': max_section
+                'title': section_title,
+                'text': section_text,
+                'match': max_section
             })
     
     print(i, len(documents))

@@ -1,4 +1,4 @@
 requests
 requests_random_user_agent
 pymongo
-progressbar
+progress

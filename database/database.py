@@ -13,8 +13,8 @@ import pickle
 from bson.binary import Binary
 import datetime
 
-from params import Params
-from connection import Connection
+from . import Params
+from . import Connection
 #from section_translator import SectionTranslator
 
 class Database:

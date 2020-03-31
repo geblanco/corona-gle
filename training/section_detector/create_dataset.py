@@ -1,4 +1,9 @@
-from methods import *
+import sys
+import os
+# isn't there a better way to do this?
+sys.path.append(os.path.abspath('../../'))
+
+# from methods import *
 from database import Database
 import torch
 import flair

@@ -1,5 +1,5 @@
-from utils import clean_text
-from database import Database
+from . import clean_text
+from . import Database
 import numpy as np
 
 class SpacyEmbeddings:

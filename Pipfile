@@ -1,0 +1,27 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+flair = "*"
+glob2 = "*"
+kaggle = "*"
+nltk = "*"
+numpy = "*"
+pandas = "*"
+pymongo = "*"
+requests = "*"
+requests-random-user-agent = "*"
+scispacy = "*"
+spacy = "*"
+torch = "*"
+tqdm = "*"
+en-core-sci-lg = {file = "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_core_sci_lg-0.2.4.tar.gz"}
+schedule = "*"
+Unidecode = "*"
+
+[requires]
+python_version = "3.8"

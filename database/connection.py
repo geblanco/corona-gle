@@ -1,6 +1,6 @@
 from pymongo import *
 from collections import OrderedDict
-from params import Params
+from . import Params
 
 class Connection:
 	CLIENT = None
@@ -10,5 +10,4 @@ try:
     Connection.DB = Connection.CLIENT[Params.DB_NAME]
     Connection.CLIENT.server_info()
 except Exception as e:
-    print(e)
-    exit()
+    raise e

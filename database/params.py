@@ -10,7 +10,7 @@ mongo_data = dict(
 )
 
 class Params:
-	DB_URL = 'mongodb://{user}:{pass}@{ip}:{port}'.format(**mongo_data)
+	DB_URL = 'mongodb://{user}:{passwd}@{ip}:{port}'.format(**mongo_data)
 	DB_NAME = "coronagle_db"
 
 	DATASET_KAGGLE_NAME = 'allen-institute-for-ai/CORD-19-research-challenge'

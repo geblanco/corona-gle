@@ -1,4 +1,9 @@
-from methods import *
+import sys
+import os
+# isn't there a better way to do this?
+sys.path.append(os.path.abspath('../../'))
+
+# from methods import *
 from database import Database
 
 import torch
@@ -31,10 +36,12 @@ cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
 
 poss_sections = {
     '#gender': ['gender', 'sex'],
+    '#male': ['gentleman', 'male', 'man', 'men'],
+    '#female': ['gentleman', 'female', 'woman', 'women'],
 }
 
 # substitute term by its embedding
-for list_candidates in poss_sections.values():
+for list_candidates in tqdm(poss_sections.values(), desc='Embedding search terms'):
     for i in range(len(list_candidates)):
         sentence = Sentence(list_candidates[i].lower())
         flair_emb.embed(sentence)
@@ -42,8 +49,9 @@ for list_candidates in poss_sections.values():
         sentence.clear_embeddings()
 
 dataset = []
+print('Retrieving documents from database...')
 documents = Database.list_raw_documents()
-for i, doc in tqdm(enumerate(documents)):
+for i, doc in tqdm(enumerate(documents), desc='Embedding documents'):
     for section_title, section_text in doc['raw']['sections'].items():
         text = section_text.strip()
         # tokenize each sentence

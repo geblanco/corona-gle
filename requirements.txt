@@ -5,6 +5,7 @@ nltk
 numpy
 pandas
 pymongo
+python-dotenv
 requests
 requests_random_user_agent
 scispacy

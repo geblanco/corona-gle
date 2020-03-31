@@ -35,9 +35,9 @@ flair_emb = DocumentPoolEmbeddings([
 cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
 
 poss_sections = {
-    '#gender': ['gender', 'sex'],
-    '#male': ['gentleman', 'male', 'man', 'men'],
-    '#female': ['gentleman', 'female', 'woman', 'women'],
+    '#gender': ['gender', 'sex', 'gentleman'],
+    '#male': ['male', 'man', 'men'],
+    '#female': ['female', 'woman', 'women'],
 }
 
 # substitute term by its embedding

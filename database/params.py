@@ -1,12 +1,14 @@
 from urllib.parse import quote
+from dotenv import load_dotenv
+load_dotenv()
 
 import os
 
 mongo_data = dict(
-  user = quote(os.environ.get('MONGO_USER', 'root')),
-  passwd = quote(os.environ.get('MONGO_PASS', 'claveRoot')),
-  ip = os.environ.get('MONGO_IP', '127.0.0.1'),
-  port = os.environ.get('MONGO_PORT', '3310'),
+  user = quote(os.getenv('MONGO_USER', 'root')),
+  passwd = quote(os.getenv('MONGO_PASS', 'claveRoot')),
+  ip = os.getenv('MONGO_IP', '127.0.0.1'),
+  port = os.getenv('MONGO_PORT', '3310'),
 )
 
 class Params:

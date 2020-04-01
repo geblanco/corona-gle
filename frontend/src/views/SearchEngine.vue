@@ -216,7 +216,8 @@ export default {
 			let self = this;
     		self.is_search = true;
         	this.send_request({endpoint: ENDPOINTS.SEARCH, method: 'POST', data: {
-        		query: self.current_question
+        		query: self.current_question,
+        		algorithm: self.current_algorithm
         	}, on_response: function(response){
         		console.log(response)
             	self.current_results = response['data']['documents'];

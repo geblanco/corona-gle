@@ -1,5 +1,6 @@
-from methods import *
-from database import Database
+import sys, os
+sys.path.append(os.path.abspath('./../'))
+from database_core import *
 import time
 #Database.sync()
 Database.update_mean_vectors('FlairEmbeddings', use='raw')

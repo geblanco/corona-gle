@@ -1,0 +1,15 @@
+ToDo := Corona_gle
+- Data/ETL
+  - Sanitize data:
+  - Merge section scraped data with classifier
+  - Automatic extraction every N hours
+
+- Database, methods for:
+  - Adding data from scrapper
+  - Updating cleaned data (given a paper updates it fields)
+
+- Frontend:
+  - Fix minor stuff
+  - Finish functionality (review selection method)
+  - Access to paper through doi + iframe + voting relevance
+

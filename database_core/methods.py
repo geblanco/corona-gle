@@ -72,6 +72,16 @@ class SpacyEmbeddings:
                 'num_elements': sum([token.has_vector for token in doc_spacy])
             }
         return sections_vector
+
+    @classmethod
+    def compute_mean_vector_from_text(cls, text):
+        c_text = clean_text(text)
+        if c_text is None:
+            return None
+
+        doc_spacy = cls.NLP(c_text)
+        return doc_spacy.vector
+
 Database.register_method(SpacyEmbeddings)
 
 class FlairEmbeddings:
@@ -164,7 +174,6 @@ class FlairEmbeddings:
             num_elements = len(mean_vector)
             mean_vector = np.mean(mean_vector, axis=0)
             doc_flair.clear_embeddings()
-
             
             sections_vector[k] = {
                 'vector': mean_vector,
@@ -173,6 +182,20 @@ class FlairEmbeddings:
 
         #cls.THREAD(target=cls.GC.collect).start()
         return sections_vector
+
+    @classmethod
+    def compute_mean_vector_from_text(cls, text):
+        c_text = clean_text(text)
+        if c_text is None:
+            return None
+
+        sentence = cls.SENTENCE(c_text)
+        cls.FLAIR_EMB.embed(sentence)
+        mean_vector = np.mean([token.embedding.cpu().numpy() for token in sentence], axis=0)
+        sentence.clear_embeddings()
+
+        return mean_vector
+
 Database.register_method(FlairEmbeddings)
 
 # class Word2Vec:

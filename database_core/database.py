@@ -75,6 +75,10 @@ class Database:
             class_dict['init'] = True
         return method_obj
 
+    @staticmethod
+    def list_methods():
+        return list(Database.METHODS.keys())
+
     """
     ==============================================================================
         INSERTION
@@ -270,20 +274,25 @@ class Database:
         return []
 
     def list_raw_documents(hash_ids=None, use_translation=False):
-        return Database.list_documents(hash_ids=hash_ids, projection={'raw': 1, 'hash_id': 1, '_id': 0}, use_translation=use_translation)
+        return Database.list_documents(hash_ids=hash_ids, projection={'raw': 1, 'hash_id': 1, '_id': 0, 'title': 1, 'url': 1}, use_translation=use_translation)
 
     def list_clean_documents(hash_ids=None, use_translation=False):
-        return Database.list_documents(hash_ids=hash_ids, projection={'clean': 1, 'hash_id': 1, '_id': 0}, use_translation=use_translation)
+        return Database.list_documents(hash_ids=hash_ids, projection={'clean': 1, 'hash_id': 1, '_id': 0, 'title': 1, 'url': 1}, use_translation=use_translation)
 
     def list_titles(hash_ids=None):
         return Database.list_documents(hash_ids=hash_ids, projection={'title': 1, 'hash_id': 1, '_id': 0}, use_translation=use_translation)
 
     def read_mean_embedding(method_obj, doc):
-        for k in doc['sections_embeddings'].keys():
-            if doc['sections_embeddings'][k] is not None:
-                doc['sections_embeddings'][k]['vector'] = pickle.loads(doc['sections_embeddings'][k]['vector'])
+        if 'sections_embeddings' not in doc:
+            mean_vector = None
 
-        mean_vector = method_obj.get_mean_vector(doc['sections_embeddings'])
+        else:
+            for k in doc['sections_embeddings'].keys():
+                if doc['sections_embeddings'][k] is not None:
+                    doc['sections_embeddings'][k]['vector'] = pickle.loads(doc['sections_embeddings'][k]['vector'])
+
+            mean_vector = method_obj.get_mean_vector(doc['sections_embeddings'])
+
         return {
             'vector': mean_vector,
             'hash_id': doc['hash_id']

@@ -164,7 +164,7 @@ class Database:
         """
         with Connection.CLIENT.start_session() as session:
             with session.start_transaction():
-                for doc in clean_documents:
+                for doc in raw_documents:
                     Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'raw': doc}}, upsert=True)
 
     @staticmethod

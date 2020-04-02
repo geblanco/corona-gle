@@ -91,6 +91,7 @@ class Database:
     @staticmethod
     def format_document_from_raw(raw_document):
         document = {
+            'cood_uid': raw_document['cood_uid'],
             'hash_id': raw_document['hash_id'],
             'title': raw_document['title'],
             'url': None,
@@ -180,6 +181,14 @@ class Database:
             with session.start_transaction():
                 for doc in clean_documents:
                     Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'clean': doc}}, upsert=True)
+
+    @staticmethod
+    def update_field_documents(documents, field):
+        """ Use with caution """
+        with Connection.CLIENT.start_session() as session:
+            with session.start_transaction():
+                for doc in documents:
+                    Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {field: doc[field]}}, upsert=True)
 
     @staticmethod
     def fix_compute_mean_vector(use, func, doc):
@@ -380,6 +389,7 @@ class Database:
             if Database.exists(json_data['paper_id']):
                 return None
 
+            data['cood_uid'] = json_data['cood_uid']
             data['hash_id'] = json_data['paper_id']
             data['title'] = json_data['metadata']['title']
             data['authors'] = json_data['metadata']['authors']

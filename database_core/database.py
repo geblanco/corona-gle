@@ -191,7 +191,7 @@ class Database:
         method_obj = Database.get_method(method)
 
         if not force:
-            query_dict = {f'sections_embeddings.{method}': {'$exists': True}}
+            query_dict = {f'sections_embeddings.{method}': {'$exists': False}}
         else:
             query_dict = {}
         documents = Database.list_documents(query=query_dict, projection={use: 1, 'hash_id': 1, '_id': 0, f'sections_embeddings.{method}': 1})
@@ -223,14 +223,16 @@ class Database:
         if use_loop:
             for doc in tqdm(documents):
                 sections_vector = method_obj.compute_mean_vector(doc[use])
-                with Connection.CLIENT.start_session() as session:
-                    with session.start_transaction():
-                        if force or method not in doc['sections_embeddings'].keys():
-                            for k in sections_vector.keys():
-                                if sections_vector[k] is not None:
-                                    sections_vector[k]['vector'] = Binary(pickle.dumps(sections_vector[k]['vector'], protocol=2))
-                            Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {f'sections_embeddings.{method}': sections_vector}}, upsert=True)
-                
+                try:
+                    with Connection.CLIENT.start_session() as session:
+                        with session.start_transaction():
+                            if force or method not in doc['sections_embeddings'].keys():
+                                for k in sections_vector.keys():
+                                    if sections_vector[k] is not None:
+                                        sections_vector[k]['vector'] = Binary(pickle.dumps(sections_vector[k]['vector'], protocol=2))
+                                Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {f'sections_embeddings.{method}': sections_vector}}, upsert=True)
+                except:
+                    pass
         else: 
             with create_exec() as executor:
                 for doc, sections_vector in zip(documents, tqdm(executor.map(partial(Database.fix_compute_mean_vector, use, method_obj.compute_mean_vector), documents), total=len(documents))):

@@ -443,7 +443,7 @@ class Database:
     ==============================================================================
     """
     @staticmethod
-    def sync(callback_preprocessing=None):
+    def sync(daemon=False, callback_preprocessing=None):
         # Lazy loading to avoid asking for credentials when not syncing
         import kaggle
         is_processing = False
@@ -470,10 +470,14 @@ class Database:
             # Is done
             is_processing = False
         
-        t = Thread(target=__sync_thread)
-        t.start()
 
-        schedule.every().hour.do(__sync_thread)
-        while True:
-            schedule.run_pending()
-            time.sleep(3600)
+        if daemon:
+            t = Thread(target=__sync_thread)
+            t.start()
+
+            schedule.every().hour.do(__sync_thread)
+            while True:
+                schedule.run_pending()
+                time.sleep(3600)
+        else:
+            __sync_thread()

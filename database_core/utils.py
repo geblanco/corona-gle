@@ -67,6 +67,11 @@ def remove_stop_words(input):
     words = word_tokenize(input)
     return ' '.join([i for i in words if not (i in stop_words)])
 
+def remove_title_numbers(input):
+    input = re.sub(r"\d+\s+", "", input)
+    input = re.sub(r"^(?=[MDCLXVI])M*(C[MD]|D?C{0,3})(X[CL]|L?X{0,3})(I[XV]|V?I{0,3})\s+", "", input)
+    return input
+
 
 def clean_text(text):
     try:

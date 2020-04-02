@@ -86,6 +86,7 @@ class Database:
     """
     @staticmethod
     def exists(hash_id):
+        return False
         return Connection.DB.documents.find_one({'hash_id': hash_id}) is not None
 
     @staticmethod
@@ -451,7 +452,7 @@ class Database:
     ==============================================================================
     """
     @staticmethod
-    def sync(callback_preprocessing=None):
+    def sync(once=False, update_database=True, callback_preprocessing=None):
         # Lazy loading to avoid asking for credentials when not syncing
         import kaggle
         is_processing = False
@@ -469,7 +470,10 @@ class Database:
             kaggle.api.dataset_download_files(Params.DATASET_KAGGLE_NAME, path=Params.DATASET_KAGGLE_RAW, unzip=True)
 
             # Create new dataset with the changes
-            raw_documents = Database.scan_folder(Params.DATASET_KAGGLE_RAW)
+            if update_database:
+                raw_documents = Database.scan_folder(Params.DATASET_KAGGLE_RAW)
+            else:
+                raw_documents = None
             
             # Execute callback
             if callback_preprocessing is not None:
@@ -478,6 +482,10 @@ class Database:
             # Is done
             is_processing = False
         
+        if once:
+            __sync_thread()
+            return
+
         t = Thread(target=__sync_thread)
         t.start()
 
@@ -485,3 +493,28 @@ class Database:
         while True:
             schedule.run_pending()
             time.sleep(3600)
+
+
+    """
+    ==============================================================================
+        Single Field updates
+    ==============================================================================
+    """
+    @staticmethod
+    def update_single_field(field):
+        folder_path = Params.DATASET_KAGGLE_RAW
+        sync(once=True, update_database=False)
+        # like scan, but updating instead of inserting
+        documents = []
+        for folder_path in filter(lambda folder_path: os.path.isdir(folder_path), glob2.iglob(os.path.join(folder_path, "*"))):
+            folder_name = os.path.basename(folder_path)
+            print('\tProcessing %s folder' % (folder_name, ))
+            with cf.ThreadPoolExecutor(max_workers=Params.SCAN_WORKERS) as executor:
+                list_jsons = glob2.glob(os.path.join(folder_path, "**", "*.json"))
+                for raw_doc in tqdm(executor.map(Database.scan_file, list_jsons), total=len(list_jsons)):
+                    if raw_doc is not None:
+                        Database.update_field_documents([raw_doc], field)
+                        documents.append(raw_doc)
+
+        # Return
+        return documents

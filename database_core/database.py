@@ -12,9 +12,11 @@ from functools import partial
 import pickle
 from bson.binary import Binary
 import datetime
+import pandas as pd
 
 from . import Params
 from . import Connection
+from .utils import fix_doi
 #from section_translator import SectionTranslator
 
 class Database:
@@ -86,13 +88,16 @@ class Database:
     """
     @staticmethod
     def exists(hash_id):
-        return False
         return Connection.DB.documents.find_one({'hash_id': hash_id}) is not None
 
     @staticmethod
     def format_document_from_raw(raw_document):
         document = {
-            'cood_uid': raw_document['cood_uid'],
+            'cord_uid': raw_document['cord_uid'],
+            'doi': raw_document['doi'],
+            'publish_time': raw_document['publish_time'],
+            'source': raw_document['source'],
+            
             'hash_id': raw_document['hash_id'],
             'title': raw_document['title'],
             'url': raw_document['url'],
@@ -382,7 +387,19 @@ class Database:
     ==============================================================================
     """
     @staticmethod
-    def parse_document_json(json_path):
+    def parse_document_json(metadata, json_path):
+        def get_paper_from_metadata(metadata, json_data):
+            paper_json_id = json_data['paper_id'].strip()
+            for i, paper_ids in enumerate(metadata['sha']):
+                if str(paper_ids) == "nan":
+                    continue
+
+                for paper_id in paper_ids.split(";"):
+                    paper_id = paper_id.strip()
+                    if paper_id == paper_json_id:
+                        return i
+            return None
+
         data = {}
         with open(json_path) as json_file:
             try:
@@ -393,8 +410,18 @@ class Database:
             if Database.exists(json_data['paper_id']):
                 return None
 
-            data['cood_uid'] = json_data['cood_uid']
-            data['url'] = json_data['url']
+            idx = get_paper_from_metadata(metadata, json_data)
+            if idx is not None:
+                meta_paper = metadata.iloc[idx]
+            else:
+                return None
+
+            data['cord_uid'] = str(meta_paper['cord_uid'])
+            data['url'] = str(meta_paper['url'])
+            data['doi'] = fix_doi(str(meta_paper['doi']))
+            data['publish_time'] = str(meta_paper['publish_time'])
+            data['source'] = str(meta_paper['source_x'])
+            
             data['hash_id'] = json_data['paper_id']
             data['title'] = json_data['metadata']['title']
             data['authors'] = json_data['metadata']['authors']
@@ -431,18 +458,18 @@ class Database:
         return data
 
     @staticmethod
-    def scan_file(json_path):
-        return Database.parse_document_json(json_path)
+    def scan_file(metadata, json_path):
+        return Database.parse_document_json(metadata, json_path)
 
     @staticmethod
-    def scan_folder(folder_path):
+    def scan_folder(metadata, folder_path):
         documents = []
         for folder_path in filter(lambda folder_path: os.path.isdir(folder_path), glob2.iglob(os.path.join(folder_path, "*"))):
             folder_name = os.path.basename(folder_path)
             print('\tProcessing %s folder' % (folder_name, ))
             with cf.ThreadPoolExecutor(max_workers=Params.SCAN_WORKERS) as executor:
                 list_jsons = glob2.glob(os.path.join(folder_path, "**", "*.json"))
-                for raw_doc in tqdm(executor.map(Database.scan_file, list_jsons), total=len(list_jsons)):
+                for raw_doc in tqdm(executor.map(partial(Database.scan_file, metadata), list_jsons), total=len(list_jsons)):
                     if raw_doc is not None:
                         Database.insert_raw_document(raw_doc)
                         documents.append(raw_doc)
@@ -467,15 +494,18 @@ class Database:
                 return
 
             is_processing = True
-            print('Checking new changes...')
+            print('Checking new changes...', end=' ')
             
             # Download from kaggle
             kaggle.api.authenticate()
             kaggle.api.dataset_download_files(Params.DATASET_KAGGLE_NAME, path=Params.DATASET_KAGGLE_RAW, unzip=True)
+            print('Done')
+            # Read csv
+            metadata = pd.read_csv(os.path.join(Params.DATASET_KAGGLE_RAW, "metadata.csv"))
 
             # Create new dataset with the changes
             if update_database:
-                raw_documents = Database.scan_folder(Params.DATASET_KAGGLE_RAW)
+                raw_documents = Database.scan_folder(metadata, Params.DATASET_KAGGLE_RAW)
             else:
                 raw_documents = None
             
@@ -504,21 +534,27 @@ class Database:
         Single Field updates
     ==============================================================================
     """
-    @staticmethod
-    def update_field(fields):
-        folder_path = Params.DATASET_KAGGLE_RAW
-        sync(once=True, update_database=False)
-        # like scan, but updating instead of inserting
-        documents = []
-        for folder_path in filter(lambda folder_path: os.path.isdir(folder_path), glob2.iglob(os.path.join(folder_path, "*"))):
-            folder_name = os.path.basename(folder_path)
-            print('\tProcessing %s folder' % (folder_name, ))
-            with cf.ThreadPoolExecutor(max_workers=Params.SCAN_WORKERS) as executor:
-                list_jsons = glob2.glob(os.path.join(folder_path, "**", "*.json"))
-                for raw_doc in tqdm(executor.map(Database.scan_file, list_jsons), total=len(list_jsons)):
-                    if raw_doc is not None:
-                        Database.update_fields_documents([raw_doc], fields)
-                        documents.append(raw_doc)
+    # @staticmethod
+    # def update_field(fields):
+    #     folder_path = Params.DATASET_KAGGLE_RAW
+    #     # Database.sync(once=True, update_database=False)
 
-        # Return
-        return documents
+    #     # Read csv
+    #     metadata = pd.read_csv(os.path.join(Params.DATASET_KAGGLE_RAW, "metadata.csv"))
+
+    #     # like scan, but updating instead of inserting
+    #     documents = []
+    #     for folder_path in filter(lambda folder_path: os.path.isdir(folder_path), glob2.iglob(os.path.join(folder_path, "*"))):
+    #         folder_name = os.path.basename(folder_path)
+    #         print('\tProcessing %s folder' % (folder_name, ))
+    #         with cf.ThreadPoolExecutor(max_workers=Params.SCAN_WORKERS) as executor:
+    #             list_jsons = glob2.glob(os.path.join(folder_path, "**", "*.json"))
+    #             for raw_doc in tqdm(executor.map(partial(Database.scan_file, metadata), list_jsons), total=len(list_jsons)):
+    #                 if raw_doc is not None:
+    #                     Database.update_fields_documents([raw_doc], fields)
+    #                     documents.append(raw_doc)
+
+    #     # Return
+    #     return documents
+    # from database_core import Database
+    # Database.update_field(['cord_uid', 'url'])

@@ -83,3 +83,11 @@ def clean_text(text):
     except:
         return None
     return text
+
+def fix_doi(d):
+    if d.startswith('http://'):
+        return d
+    elif d.startswith('doi.org'):
+        return f'http://{d}'
+    else:
+        return f'http://doi.org/{d}'

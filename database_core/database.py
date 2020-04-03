@@ -13,6 +13,7 @@ import pickle
 from bson.binary import Binary
 import datetime
 import pandas as pd
+import math
 
 from . import Params
 from . import Connection
@@ -264,9 +265,7 @@ class Database:
     
     @staticmethod
     def update_translation_sections(model_path, use='raw', force=False):
-        import torch
-        cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
-        
+        import torch        
         import flair
         import numpy as np
         flair.devide = torch.device('cuda:0')
@@ -274,46 +273,49 @@ class Database:
         from flair.data import Sentence, segtok_tokenizer
         from flair.embeddings import FlairEmbeddings as FlairEmbeddings, DocumentPoolEmbeddings
         
+        # Define similarity
+        cos_sim = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
+
+        # Define document embedding
         flair_emb = DocumentPoolEmbeddings([
                 FlairEmbeddings('en-forward-fast'), 
                 FlairEmbeddings('en-backward-fast')
             ],
             pooling='mean',
         )
-        possible_sections = {
-            '#introduction': ['intro', 'introduction', 'starting'],
-            '#abstract': ['abstract', 'abstracts'],
-            '#sota': ['background', 'backgrounds', 'state of the art', 'previous', 'related work'],
-            '#method': ['method', 'methods', 'methodology', 'material', 'materials', 'development', 'description', 'model', 'procedures'],
-            '#experiments_or_results': ['experiments', 'experiment', 'analysis', 'analytics', 'analisy', 'statistics', 'regression', 
-                'analises', 'results', 'result', 'evaluation', 'measures', 'correlation', 'comparison', 'tests', 'test', 'lab', 'laboratory'],
-            '#conclusions': ['conclusion', 'conclusions', 'discussion', 'discussions'],
-        }
 
-        """positional_probs = {
-            0.2: {
-                '#introduction': 0.5,
-                '#abstract': 0.5,
-                '#sota': 0.3,
-                '#method': 0.1,
-                '...': ...
-            },
+        # Get probability of class given position
+        sections_classifier_prob_length = list(Params.SECTIONS_CLASSIFIER_POSITIONS_COND_CLASS.values())[0].shape[0]
+        def get_P_c_cond_pos():
+            P_c_cond_pos = {}
+            z_norm = np.zeros(shape=(sections_classifier_prob_length, ))
+            for c in Params.SECTIONS_CLASSIFIER_POSITIONS_COND_CLASS.keys():
+                P_c_cond_pos[c] = Params.SECTIONS_CLASSIFIER_PRIORS[c] * Params.SECTIONS_CLASSIFIER_POSITIONS_COND_CLASS[c]
+                z_norm += P_c_cond_pos[c]
 
-        }"""
-        
-        for list_candidates in possible_sections.values():
-            for i in range(len(list_candidates)):
-                sentence = Sentence(list_candidates[i].lower())
+            for c in Params.SECTIONS_CLASSIFIER_POSITIONS_COND_CLASS.keys():
+                P_c_cond_pos[c] = (P_c_cond_pos[c] + 1e-10) / (z_norm + 1e-10)
+
+            return P_c_cond_pos
+        sections_class_cond_positions = get_P_c_cond_pos()
+
+        # Generate embeddings of keywords
+        sections_classifier_keywords_embeddings = {}
+        for k in Params.SECTIONS_CLASSIFIER_KEYWORDS.keys():
+            sections_classifier_keywords_embeddings[k] = []
+            for i in range(len(Params.SECTIONS_CLASSIFIER_KEYWORDS[k])):
+                sentence = Sentence(Params.SECTIONS_CLASSIFIER_KEYWORDS[k][i].lower())
                 flair_emb.embed(sentence)
-                list_candidates[i] = sentence.embedding
+                sections_classifier_keywords_embeddings[k].append(sentence.embedding)
                 sentence.clear_embeddings()
 
-        def get_near_section(mean_vector, possible_sections):
+        # Function to find the nearest section given title
+        def get_near_section(mean_vector):
             max_value = -2
             max_section = None
-            for possible_section, candidates in possible_sections.items():
+            for possible_section, candidates in sections_classifier_keywords_embeddings.items():
                 for candidate in candidates:
-                    score = cos(mean_vector, candidate)
+                    score = cos_sim(mean_vector, candidate)
 
                     if score > 0.9: # consideramos valido
                         if max_value < score:
@@ -325,56 +327,89 @@ class Database:
             else:
                 return None, None
 
+        # Text section classifier
         classifier = TextClassifier.load(model_path)
 
         if not force:
             query_dict = {'$or': [{'sections_translation': {'$exists': False}}, {'sections_translation': {'$eq': dict()}}]}
         else:
             query_dict = {}
-        documents = Database.list_documents(query=query_dict, projection={use: 1, 'hash_id': 1, '_id': 0, 'raw.sections': 1})
+        documents = Database.list_documents(query=query_dict, projection={use: 1, 'hash_id': 1, '_id': 1, 'raw.sections': 1})
 
         with torch.no_grad():
             for doc in tqdm(documents):
-                try:
-                    translation_lut = {}
-                    for section_title, section_text in doc[use]['sections'].items():
-                        predict_label = None
-                        predict_score = None
+                #try:
+                translation_lut = {}
+                
+                offsets = np.concatenate(([0], np.cumsum([len(section_text) for section_text in doc[use]['sections'].values()])))
+                total_offsets = offsets[-1]
+                for section_idx, (section_title, section_text) in enumerate(doc[use]['sections'].items()):
+                    # Get the section
+                    norm_position_start = offsets[section_idx] / total_offsets
+                    norm_position_end = offsets[section_idx + 1] / total_offsets
 
-                        # Classification using section_title
-                        if predict_label is None:
-                            if section_title == "":
-                                continue
-                            
-                            clean_title = remove_title_numbers(clean_text(section_title.lower()))
-                            if clean_title is None or clean_title == "":
-                                continue
+                    predict_labels = None
 
-                            sentence_title = Sentence(clean_title)
-                            flair_emb.embed(sentence_title)
-                            mean_vector = sentence_title.embedding
-                            predict_label, predict_score = get_near_section(mean_vector, possible_sections)
-                            sentence_title.clear_embeddings()
+                    # Classification using section_title
+                    if predict_labels is None:
+                        if section_title == "":
+                            continue
                         
-                        # Classification using section_text
-                        if predict_label is None: 
-                            if section_text == "":
-                                continue
+                        clean_title = remove_title_numbers(clean_text(section_title.lower()))
+                        if clean_title is None or clean_title == "":
+                            continue
 
-                            sentence_text = Sentence(section_text.lower(), use_tokenizer=segtok_tokenizer)
-                            classifier.predict(sentence_text)
+                        sentence_title = Sentence(clean_title)
+                        flair_emb.embed(sentence_title)
+                        mean_vector = sentence_title.embedding
+                        predict_label_aux, predict_score_aux = get_near_section(mean_vector)
+                        sentence_title.clear_embeddings()
 
-                            predict_label = sentence_text.labels[0].value
-                            predict_score = sentence_text.labels[0].score
+                        if predict_label_aux is not None:
+                            other_prob = (1 - predict_score_aux) / (len(sections_classifier_keywords_embeddings.keys()) - 1)
+                            predict_labels = {k:predict_score_aux if predict_label_aux == k else other_prob for k in \
+                                sections_classifier_keywords_embeddings.keys()}
+                    
+                    # Classification using section_text
+                    if predict_labels is None: 
+                        if section_text == "":
+                            continue
+
+                        sentence_text = Sentence(section_text.lower(), use_tokenizer=segtok_tokenizer)
+                        classifier.predict(sentence_text, multi_class_prob=True)
+                        predict_labels = {l.value: l.score for l in sentence_text.labels}
+
+                    # Normalize classification using position
+                    if predict_labels is not None:
+                        scaled_pos_start = int(math.floor(sections_classifier_prob_length * norm_position_start))
+                        scaled_pos_end = int(math.floor(sections_classifier_prob_length * norm_position_end))
+                        for label, p in predict_labels.items():
+                            predict_labels[label] = p * \
+                                np.median(sections_class_cond_positions[label][scaled_pos_start:scaled_pos_end])
                         
-                        if predict_label is not None:
-                            translation_lut[section_title] = predict_label, predict_score
+                        z_norm = sum([p for p in predict_labels.values()])
+                        
+                        for label in predict_labels.keys():
+                            predict_labels[label] = predict_labels[label] / z_norm
 
-                    with Connection.CLIENT.start_session() as session:
-                        with session.start_transaction():
-                            Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'sections_translation': translation_lut}})
-                except:
-                    pass
+                    # Insert the most probable value
+                    if predict_labels is not None:
+                        max_k = None
+                        max_v = -1
+                        for k, v in predict_labels.items():
+                            if max_v < v:
+                                max_v = v
+                                max_k = k
+
+                        # print(doc['_id'], section_title, section_text[:50], max_k, max_v, norm_position)
+                        translation_lut[section_title] = max_k, max_v
+
+
+                with Connection.CLIENT.start_session() as session:
+                    with session.start_transaction():
+                        Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'sections_translation': translation_lut}})
+                #except:
+                #    pass
 
 
     """

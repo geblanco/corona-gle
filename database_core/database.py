@@ -95,7 +95,7 @@ class Database:
             'cood_uid': raw_document['cood_uid'],
             'hash_id': raw_document['hash_id'],
             'title': raw_document['title'],
-            'url': None,
+            'url': raw_document['url'],
             'clean': {
                 #sections: ...
                 # citations: ...
@@ -184,12 +184,15 @@ class Database:
                     Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'clean': doc}}, upsert=True)
 
     @staticmethod
-    def update_field_documents(documents, field):
+    def update_fields_documents(documents, fields):
+        if not isinstance(fields, list):
+            fields = [fields]
+
         """ Use with caution """
         with Connection.CLIENT.start_session() as session:
             with session.start_transaction():
                 for doc in documents:
-                    Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {field: doc[field]}}, upsert=True)
+                    Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {field: doc[field] for field in fields}}, upsert=True)
 
     @staticmethod
     def fix_compute_mean_vector(use, func, doc):
@@ -391,6 +394,7 @@ class Database:
                 return None
 
             data['cood_uid'] = json_data['cood_uid']
+            data['url'] = json_data['url']
             data['hash_id'] = json_data['paper_id']
             data['title'] = json_data['metadata']['title']
             data['authors'] = json_data['metadata']['authors']
@@ -501,7 +505,7 @@ class Database:
     ==============================================================================
     """
     @staticmethod
-    def update_single_field(field):
+    def update_field(fields):
         folder_path = Params.DATASET_KAGGLE_RAW
         sync(once=True, update_database=False)
         # like scan, but updating instead of inserting
@@ -513,7 +517,7 @@ class Database:
                 list_jsons = glob2.glob(os.path.join(folder_path, "**", "*.json"))
                 for raw_doc in tqdm(executor.map(Database.scan_file, list_jsons), total=len(list_jsons)):
                     if raw_doc is not None:
-                        Database.update_field_documents([raw_doc], field)
+                        Database.update_fields_documents([raw_doc], fields)
                         documents.append(raw_doc)
 
         # Return

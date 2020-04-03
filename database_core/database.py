@@ -15,6 +15,7 @@ import datetime
 
 from . import Params
 from . import Connection
+from .utils import clean_text, remove_title_numbers
 #from section_translator import SectionTranslator
 
 class Database:
@@ -191,7 +192,7 @@ class Database:
         method_obj = Database.get_method(method)
 
         if not force:
-            query_dict = {f'sections_embeddings.{method}': {'$exists': True}}
+            query_dict = {f'sections_embeddings.{method}': {'$exists': False}}
         else:
             query_dict = {}
         documents = Database.list_documents(query=query_dict, projection={use: 1, 'hash_id': 1, '_id': 0, f'sections_embeddings.{method}': 1})
@@ -223,14 +224,16 @@ class Database:
         if use_loop:
             for doc in tqdm(documents):
                 sections_vector = method_obj.compute_mean_vector(doc[use])
-                with Connection.CLIENT.start_session() as session:
-                    with session.start_transaction():
-                        if force or method not in doc['sections_embeddings'].keys():
-                            for k in sections_vector.keys():
-                                if sections_vector[k] is not None:
-                                    sections_vector[k]['vector'] = Binary(pickle.dumps(sections_vector[k]['vector'], protocol=2))
-                            Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {f'sections_embeddings.{method}': sections_vector}}, upsert=True)
-                
+                try:
+                    with Connection.CLIENT.start_session() as session:
+                        with session.start_transaction():
+                            if force or method not in doc['sections_embeddings'].keys():
+                                for k in sections_vector.keys():
+                                    if sections_vector[k] is not None:
+                                        sections_vector[k]['vector'] = Binary(pickle.dumps(sections_vector[k]['vector'], protocol=2))
+                                Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {f'sections_embeddings.{method}': sections_vector}}, upsert=True)
+                except:
+                    pass
         else: 
             with create_exec() as executor:
                 for doc, sections_vector in zip(documents, tqdm(executor.map(partial(Database.fix_compute_mean_vector, use, method_obj.compute_mean_vector), documents), total=len(documents))):
@@ -241,6 +244,122 @@ class Database:
                                     if sections_vector[k] is not None:
                                         sections_vector[k]['vector'] = Binary(pickle.dumps(sections_vector[k]['vector'], protocol=2))
                                 Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {f'sections_embeddings.{method}': sections_vector}}, upsert=True)
+    
+    @staticmethod
+    def update_translation_sections(model_path, use='raw', force=False):
+        import torch
+        cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
+        
+        import flair
+        import numpy as np
+        flair.devide = torch.device('cuda:0')
+        from flair.models import TextClassifier
+        from flair.data import Sentence, segtok_tokenizer
+        from flair.embeddings import FlairEmbeddings as FlairEmbeddings, DocumentPoolEmbeddings
+        
+        flair_emb = DocumentPoolEmbeddings([
+                FlairEmbeddings('en-forward-fast'), 
+                FlairEmbeddings('en-backward-fast')
+            ],
+            pooling='mean',
+        )
+        possible_sections = {
+            '#introduction': ['intro', 'introduction', 'starting'],
+            '#abstract': ['abstract', 'abstracts'],
+            '#sota': ['background', 'backgrounds', 'state of the art', 'previous', 'related work'],
+            '#method': ['method', 'methods', 'methodology', 'material', 'materials', 'development', 'description', 'model', 'procedures'],
+            '#experiments_or_results': ['experiments', 'experiment', 'analysis', 'analytics', 'analisy', 'statistics', 'regression', 
+                'analises', 'results', 'result', 'evaluation', 'measures', 'correlation', 'comparison', 'tests', 'test', 'lab', 'laboratory'],
+            '#conclusions': ['conclusion', 'conclusions', 'discussion', 'discussions'],
+        }
+
+        """positional_probs = {
+            0.2: {
+                '#introduction': 0.5,
+                '#abstract': 0.5,
+                '#sota': 0.3,
+                '#method': 0.1,
+                '...': ...
+            },
+
+        }"""
+        
+        for list_candidates in possible_sections.values():
+            for i in range(len(list_candidates)):
+                sentence = Sentence(list_candidates[i].lower())
+                flair_emb.embed(sentence)
+                list_candidates[i] = sentence.embedding
+                sentence.clear_embeddings()
+
+        def get_near_section(mean_vector, possible_sections):
+            max_value = -2
+            max_section = None
+            for possible_section, candidates in possible_sections.items():
+                for candidate in candidates:
+                    score = cos(mean_vector, candidate)
+
+                    if score > 0.9: # consideramos valido
+                        if max_value < score:
+                            max_value = score
+                            max_section = possible_section
+
+            if max_section is not None: # Hay seccion seleccionada
+                return max_section, float(max_value.cpu().detach().numpy())
+            else:
+                return None, None
+
+        classifier = TextClassifier.load(model_path)
+
+        if not force:
+            query_dict = {'$or': [{'sections_translation': {'$exists': False}}, {'sections_translation': {'$eq': dict()}}]}
+        else:
+            query_dict = {}
+        documents = Database.list_documents(query=query_dict, projection={use: 1, 'hash_id': 1, '_id': 0, 'raw.sections': 1})
+
+        with torch.no_grad():
+            for doc in tqdm(documents):
+                try:
+                    translation_lut = {}
+                    for section_title, section_text in doc[use]['sections'].items():
+                        predict_label = None
+                        predict_score = None
+
+                        # Classification using section_title
+                        if predict_label is None:
+                            if section_title == "":
+                                continue
+                            
+                            clean_title = remove_title_numbers(clean_text(section_title.lower()))
+                            if clean_title is None or clean_title == "":
+                                continue
+
+                            sentence_title = Sentence(clean_title)
+                            flair_emb.embed(sentence_title)
+                            mean_vector = sentence_title.embedding
+                            predict_label, predict_score = get_near_section(mean_vector, possible_sections)
+                            sentence_title.clear_embeddings()
+                        
+                        # Classification using section_text
+                        if predict_label is None: 
+                            if section_text == "":
+                                continue
+
+                            sentence_text = Sentence(section_text.lower(), use_tokenizer=segtok_tokenizer)
+                            classifier.predict(sentence_text)
+
+                            predict_label = sentence_text.labels[0].value
+                            predict_score = sentence_text.labels[0].score
+                        
+                        if predict_label is not None:
+                            translation_lut[section_title] = predict_label, predict_score
+
+                    with Connection.CLIENT.start_session() as session:
+                        with session.start_transaction():
+                            Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'sections_translation': translation_lut}})
+                except:
+                    pass
+
+
     """
     ==============================================================================
         GET
@@ -441,7 +560,7 @@ class Database:
     ==============================================================================
     """
     @staticmethod
-    def sync(callback_preprocessing=None):
+    def sync(daemon=False, callback_preprocessing=None):
         # Lazy loading to avoid asking for credentials when not syncing
         import kaggle
         is_processing = False
@@ -468,10 +587,14 @@ class Database:
             # Is done
             is_processing = False
         
-        t = Thread(target=__sync_thread)
-        t.start()
 
-        schedule.every().hour.do(__sync_thread)
-        while True:
-            schedule.run_pending()
-            time.sleep(3600)
+        if daemon:
+            t = Thread(target=__sync_thread)
+            t.start()
+
+            schedule.every().hour.do(__sync_thread)
+            while True:
+                schedule.run_pending()
+                time.sleep(3600)
+        else:
+            __sync_thread()

@@ -6,8 +6,8 @@ Cleaning pipeline extractd from:
 import re
 import unidecode
 import nltk
-nltk.download('stopwords')
-nltk.download('punkt')
+#nltk.download('stopwords')
+#nltk.download('punkt')
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -66,6 +66,11 @@ def remove_stop_words(input):
     stop_words = set(stopwords.words("english"))
     words = word_tokenize(input)
     return ' '.join([i for i in words if not (i in stop_words)])
+
+def remove_title_numbers(input):
+    input = re.sub(r"\d+\s+", "", input)
+    input = re.sub(r"^(?=[MDCLXVI])M*(C[MD]|D?C{0,3})(X[CL]|L?X{0,3})(I[XV]|V?I{0,3})\s+", "", input)
+    return input
 
 
 def clean_text(text):

@@ -272,12 +272,24 @@ class Database:
                 'analises', 'results', 'result', 'evaluation', 'measures', 'correlation', 'comparison', 'tests', 'test', 'lab', 'laboratory'],
             '#conclusions': ['conclusion', 'conclusions', 'discussion', 'discussions'],
         }
+
+        """positional_probs = {
+            0.2: {
+                '#introduction': 0.5,
+                '#abstract': 0.5,
+                '#sota': 0.3,
+                '#method': 0.1,
+                '...': ...
+            },
+
+        }"""
+        
         for list_candidates in possible_sections.values():
             for i in range(len(list_candidates)):
                 sentence = Sentence(list_candidates[i].lower())
                 flair_emb.embed(sentence)
                 list_candidates[i] = sentence.embedding
-                #sentence.clear_embeddings()
+                sentence.clear_embeddings()
 
         def get_near_section(mean_vector, possible_sections):
             max_value = -2
@@ -306,44 +318,46 @@ class Database:
 
         with torch.no_grad():
             for doc in tqdm(documents):
-                #try:
-                translation_lut = {}
-                for section_title, section_text in doc[use]['sections'].items():
-                    predict_label = None
-                    predict_score = None
+                try:
+                    translation_lut = {}
+                    for section_title, section_text in doc[use]['sections'].items():
+                        predict_label = None
+                        predict_score = None
 
-                    if predict_label is None:
-                        if section_title == "":
-                            continue
+                        # Classification using section_title
+                        if predict_label is None:
+                            if section_title == "":
+                                continue
+                            
+                            clean_title = remove_title_numbers(clean_text(section_title.lower()))
+                            if clean_title is None or clean_title == "":
+                                continue
+
+                            sentence_title = Sentence(clean_title)
+                            flair_emb.embed(sentence_title)
+                            mean_vector = sentence_title.embedding
+                            predict_label, predict_score = get_near_section(mean_vector, possible_sections)
+                            sentence_title.clear_embeddings()
                         
-                        clean_title = remove_title_numbers(clean_text(section_title.lower()))
-                        if clean_title is None or clean_title == "":
-                            continue
+                        # Classification using section_text
+                        if predict_label is None: 
+                            if section_text == "":
+                                continue
 
-                        sentence_title = Sentence(clean_title)
-                        flair_emb.embed(sentence_title)
-                        mean_vector = sentence_title.embedding
-                        predict_label, predict_score = get_near_section(mean_vector, possible_sections)
-                        sentence_title.clear_embeddings()
-                    
-                    if predict_label is None: 
-                        if section_text == "":
-                            continue
+                            sentence_text = Sentence(section_text.lower(), use_tokenizer=segtok_tokenizer)
+                            classifier.predict(sentence_text)
 
-                        sentence_text = Sentence(section_text.lower(), use_tokenizer=segtok_tokenizer)
-                        classifier.predict(sentence_text)
+                            predict_label = sentence_text.labels[0].value
+                            predict_score = sentence_text.labels[0].score
+                        
+                        if predict_label is not None:
+                            translation_lut[section_title] = predict_label, predict_score
 
-                        predict_label = sentence_text.labels[0].value
-                        predict_score = sentence_text.labels[0].score
-                    
-                    if predict_label is not None:
-                        translation_lut[section_title] = predict_label, predict_score
-
-                with Connection.CLIENT.start_session() as session:
-                    with session.start_transaction():
-                        Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'sections_translation': translation_lut}})
-                #except:
-                #    pass
+                    with Connection.CLIENT.start_session() as session:
+                        with session.start_transaction():
+                            Connection.DB.documents.update_one({'hash_id': doc['hash_id']}, {'$set': {'sections_translation': translation_lut}})
+                except:
+                    pass
 
 
     """

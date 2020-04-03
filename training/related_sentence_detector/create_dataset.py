@@ -4,14 +4,16 @@ import os
 sys.path.append(os.path.abspath('../../'))
 
 # from methods import *
-from database import Database
+from database_core import Database
 
+import json
 import torch
 import flair
 import pickle
 
 import scispacy
 import spacy
+spacy.require_gpu()
 from tqdm import tqdm
 
 from flair.data import Sentence
@@ -25,6 +27,9 @@ from torch.multiprocessing import Pool
 
 curr_path = os.path.dirname(os.path.abspath(__file__))
 data_path = os.path.join(curr_path, "data")
+tmp_path = os.path.join(data_path, "tmp_data")
+os.makedirs(os.path.join(tmp_path, "doc"), exist_ok=True)
+os.makedirs(os.path.join(tmp_path, "sentences"), exist_ok=True)
 
 nlp = spacy.load('en_core_sci_lg', disable=['ner', 'parser'])
 nlp.add_pipe(nlp.create_pipe('sentencizer'))
@@ -57,7 +62,7 @@ dataset = []
 print('Retrieving documents from database...')
 documents = Database.list_raw_documents()
 
-def create_emb(doc):
+def create_emb(tmp_sentences_path, doc):
     batch_size = 60
 
     dataset_section = []
@@ -73,6 +78,9 @@ def create_emb(doc):
             flair_sent = Sentence(sentence.text)
             flair_sentences.append(flair_sent)
             texts.append(sentence.text)
+
+        with open(tmp_sentences_path, 'w') as f:
+            json.dump(texts, f)
 
         for i in range(0, len(flair_sentences), batch_size):
             flair_emb.embed(flair_sentences[i:i+batch_size])
@@ -109,9 +117,22 @@ def create_emb(doc):
 
 dataset = []
 for doc in tqdm(documents, desc='Embedding documents'):
-    dataset_section = create_emb(doc)
-    for data in dataset_section:
-        dataset.append(data)
+    tmp_doc_path = os.path.join(tmp_path, "doc", doc['hash_id'] + ".json")
+    tmp_sentences_path = os.path.join(tmp_path, "sentences", doc['hash_id'] + ".json")
+    if not os.path.exists(tmp_doc_path):
+        doc_matchs = create_emb(tmp_sentences_path, doc)
+        with open(tmp_doc_path, 'w') as f:
+            json.dump(doc_matchs, f)
+    else:  
+        try:
+            with open(tmp_doc_path, 'r') as f:
+                doc_matchs = json.load(f)
+        except:
+            doc_matchs = create_emb(tmp_sentences_path, doc)
+            with open(tmp_doc_path, 'w') as f:
+                json.dump(doc_matchs, f)
+    
+    dataset += doc_matchs
 
 # for i, doc in tqdm(enumerate(documents), desc='Embedding documents'):
 #     for section_title, section_text in doc['raw']['sections'].items():

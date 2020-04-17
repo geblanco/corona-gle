@@ -14,7 +14,7 @@ services:
   langmodel:
     build: ./Language_model
     volumes:
-      - ./Language_model:/media/code
+      - ./language_model:/media/code
       - /media/axhue/WD/Data/Coronawhy/:/media/data #change this to data directory
     ports:
       - "5000:5000"

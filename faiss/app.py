@@ -9,15 +9,15 @@ from flask import Flask,request
 
 sess = requests.Session()
 
-index_dir = '/media/data/faiss'
+index_dir = '/media/data/'
 
 
-if os.environ['FLASK_ENV'] == 'development':
+if os.environ['FLASK_ENV'] != 'production':
 	log.info('reading dev faiss')
 	index = faiss.read_index(os.path.join(index_dir, "dev_faiss.index"))
 else:
-	log.info('reading from {}'.format(os.path.join(index_dir)
-        index = faiss.read_index(os.path.join(index_dir, "faiss.index"))
+	log.info('reading from {}'.format(os.path.join(index_dir)))
+	index = faiss.read_index(os.path.join(index_dir, "faiss.index"))
 
 
 in_dir = '/media/data/'
@@ -41,6 +41,7 @@ logger.info('loaded mini_df: {}'.format(len(mini_df)))
 
 app = Flask(__name__)
 app.debug = True
+
 def search_vec(query_vector,k=5):
 	query_vector = np.array(query_vector,dtype=np.float32).reshape(1,len(query_vector))
 	D,I = index.search(query_vector, k)
@@ -55,7 +56,7 @@ def search_vec(query_vector,k=5):
 @app.route('/semsearch',methods=['POST'])
 def search():
 	query_vec = request.form.getlist('query_vec')
-	#print("FAISS has received : {}".format(query_vec))
+	print("FAISS has received : {}".format(query_vec))
 	return {
 		'result': search_vec(query_vec)
 	}

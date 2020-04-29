@@ -3,19 +3,21 @@ import os
 import numpy as np
 
 import requests
+import logging as log
 
 from flask import Flask,request
 
 sess = requests.Session()
 
-index_dir = '/media/data/'
+index_dir = '/media/data/faiss'
 
 
 if os.environ['FLASK_ENV'] == 'development':
-	print('reading dev faiss')
+	log.info('reading dev faiss')
 	index = faiss.read_index(os.path.join(index_dir, "dev_faiss.index"))
 else:
-	index = faiss.read_index(os.path.join(index_dir, "faiss.index"))
+	log.info('reading from {}'.format(os.path.join(index_dir)
+        index = faiss.read_index(os.path.join(index_dir, "faiss.index"))
 
 
 in_dir = '/media/data/'
@@ -34,11 +36,11 @@ for pickle in pickle_list[:2]:
 	pickle_df = pd.read_csv(pickle,sep='\t',usecols=['paper_id','sentence_id','sentence'])
 	mini_df = pd.concat([mini_df,pickle_df])
 
-print('loaded mini_df: {}'.format(len(mini_df)))
+logger.info('loaded mini_df: {}'.format(len(mini_df)))
 '''
 
 app = Flask(__name__)
-
+app.debug = True
 def search_vec(query_vector,k=5):
 	query_vector = np.array(query_vector,dtype=np.float32).reshape(1,len(query_vector))
 	D,I = index.search(query_vector, k)

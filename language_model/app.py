@@ -27,6 +27,7 @@ def encode():
 	res_vec = result.vector.tolist()
 	#print('Model sending to FAISS: {}'.format(res_vec))
 	res = sess.post('http://indexmap:5001/semsearch',data={'query_vec':res_vec})
+        print(res)
 	return {
 		'result': res.json()['result']
 	}

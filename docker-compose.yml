@@ -1,24 +1,24 @@
 version: '3'
 services:
   indexmap:
-    build: ./FAISS
+    build: ./faiss
     ports:
       - "5001:5001"
     volumes:
-      - ./FAISS:/media/code
-      - /media/axhue/WD/Data/Coronawhy/:/media/data #change this to data directory
+      - ./faiss:/media/code
+      - /data:/media/data #change this to data directory
     environment:
       FLASK_ENV: development
       FLASK_APP: /media/code/app.py
       FLASK_RUN_PORT: 5001
   langmodel:
-    build: ./Language_model
+    build: ./language_model
     volumes:
       - ./language_model:/media/code
-      - /media/axhue/WD/Data/Coronawhy/:/media/data #change this to data directory
+      - /data:/media/data #change this to data directory
     ports:
       - "5000:5000"
     environment:
-      FLASK_ENV: development
+      FLASK_ENV: production
       FLASK_APP: /media/code/app.py
       FLASK_RUN_PORT: 5000
